@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Survival Idle Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto Condensed', sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .game-title {
+            font-family: 'Orbitron', sans-serif;
+            text-shadow: 0 0 15px #ff5555;
+            color: #ff5555;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 1200px; /* Adjust as needed */
+            height: calc(100vh - 2rem); /* Full height minus some margin */
+            max-height: 800px; /* Adjust as needed */
+            background-color: #222;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .map-container {
+            flex-grow: 1;
+            position: relative;
+            background-color: #333; /* Base map color */
+            overflow: hidden; /* Important for player movement */
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1; /* Below UI elements */
+        }
+
+        #fog-of-war-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5; /* Above map and entities, below UI */
+            pointer-events: none; /* Allow clicks through */
+        }
+
+        .player, .zombie, .projectile {
+            position: absolute;
+            will-change: transform; /* Optimize animation */
+        }
+
+        .player {
+            width: 30px;
+            height: 30px;
+            z-index: 6; /* Higher than fog of war to ensure visibility */
+        }
+
+        .player-body {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background-color: #87CEEB; /* Player torso color - changed to light blue */
+            border-radius: 4px;
+        }
+
+        .player-head {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background-color: #ffd700; /* Player head color */
+            border-radius: 50%;
+            top: -5px; /* Adjust position relative to body */
+            left: 8px;
+        }
+
+        .zombie {
+            background-color: #880808; /* Zombie color */
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+        }
+
+        .projectile {
+            background-color: #00ffff; /* Projectile color */
+            border-radius: 50%;
+            width: 8px;
+            height: 8px;
+            z-index: 3;
+        }
+
+        .health-bar {
+            position: absolute;
+            top: -10px;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background-color: #333;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .health-bar-fill {
+            height: 100%;
+            background-color: #00ff00; /* Player health bar color - changed to green */
+            width: 100%; /* controlled by JS */
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .panel {
+            background-color: #2d3748;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .button-primary {
+            @apply bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition duration-200;
+        }
+
+        .button-secondary {
+            @apply bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded transition duration-200;
+        }
+
+        .progress-bar-container {
+            @apply w-full bg-gray-700 rounded-full h-2.5 dark:bg-gray-700;
+        }
+
+        .progress-bar-fill {
+            @apply h-2.5 rounded-full;
+        }
+
+        /* Weather effects */
+        .weather-effect {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .rain-drop {
+            position: absolute;
+            background-color: rgba(173, 216, 230, 0.7); /* Light blue */
+            width: 2px;
+            height: 15px;
+            border-radius: 50%;
+            animation: rain-fall linear infinite;
+        }
+
+        @keyframes rain-fall {
+            from {
+                transform: translateY(-10px) translateX(0);
+            }
+            to {
+                transform: translateY(100vh) translateX(50px);
+            }
+        }
+
+        .fog-particle {
+            position: absolute;
+            background-color: rgba(200, 200, 200, 0.3); /* Light grey, semi-transparent */
+            border-radius: 50%;
+            animation: fog-drift linear infinite;
+        }
+
+        @keyframes fog-drift {
+            0% { transform: translate(0, 0); opacity: 0.5; }
+            50% { transform: translate(var(--fog-drift-x), var(--fog-drift-y)); opacity: 0.7; }
+            100% { transform: translate(0, 0); opacity: 0.5; }
+        }
+    </style>
+    <link rel="icon" href="images/3ef5454e-6f6e-4552-9fbc-40f24053c940.png" type="image/x-icon">
+    <link rel="shortcut icon" href="images/3ef5454e-6f6e-4552-9fbc-40f24053c940.png" type="image/x-icon">
+</head>
+<body>
+    <div class="game-container">
+        <div id="main-menu" class="overlay active">
+            <div class="panel">
+                <h1 class="text-4xl mb-6 game-title">Zombie Survival Idle Game</h1>
+                <button id="start-game-btn" class="button-primary mb-4">Start New Game&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</button>
+                <button id="load-game-btn" class="button-secondary">Load Game</button>
+            </div>
+        </div>
+
+        <div id="in-game-ui" class="hidden absolute top-4 left-4 right-4 z-20 flex justify-between items-start">
+        <!--bg-gray-800--><div class="p-4 rounded-lg shadow-lg flex-shrink-0 mr-4 w-64">
+                <h2 class="text-xl mb-2 text-red-400">Player Stats</h2>
+                <p>Health: <span id="player-health"></span>/<span id="player-max-health"></span></p>
+                <div class="progress-bar-container mt-1">
+                    <div id="hp-bar" class="progress-bar-fill bg-red-500"></div>
+                </div>
+                <p class="mt-2">XP: <span id="player-xp"></span>/<span id="player-max-xp"></span> (Level <span id="player-level"></span>)</p>
+                <div class="progress-bar-container mt-1">
+                    <div id="xp-bar" class="progress-bar-fill bg-blue-500"></div>
+                </div>
+                <p class="mt-2">Currency: <span id="player-currency" class="text-yellow-400"></span> Scraps</p>
+                <p>Weapon: <span id="player-weapon"></span></p>
+                <p>Kills: <span id="player-kills"></span></p>
+                <p>Speed: <span id="player-speed"></span></p>
+            </div>
+
+            <div class="flex-grow flex flex-col items-center">
+                <div class="bg-gray-800 p-2 rounded-lg shadow-lg text-center mb-4">
+                    <p class="text-lg">Current Zone: <span id="current-zone" class="text-green-400">Starting Point</span></p>
+                </div>
+                <div id="weather-display" class="bg-gray-800 p-2 rounded-lg shadow-lg text-center mb-4 hidden">
+                    <p class="text-md">Weather: <span id="weather-type">Clear</span></p>
+                </div>
+            </div>
+
+
+            <div class="flex flex-col items-end flex-shrink-0 ml-4">
+                <button id="pause-button" class="button-secondary mb-4 w-24">Pause</button>
+                <button id="upgrade-button-open" class="button-primary mb-4 w-24">Upgrades</button>
+                <div class="bg-gray-800 p-2 rounded-lg shadow-lg flex items-center mb-2">
+                    <span class="mr-2">Game Speed:</span>
+                    <button id="speed-normal" class="button-secondary px-2 py-1 text-sm mr-1">1x</button>
+                    <button id="speed-fast" class="button-secondary px-2 py-1 text-sm mr-1">2x</button>
+                    <button id="speed-fastest" class="button-secondary px-2 py-1 text-sm mr-1">4x</button>
+                    <button id="speed-x10" class="button-secondary px-2 py-1 text-sm">10x</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <canvas id="game-canvas"></canvas>
+            <canvas id="fog-of-war-canvas"></canvas>
+            <div id="weather-overlay" class="weather-effect"></div>
+            </div>
+
+        <div id="upgrade-menu" class="overlay">
+            <div class="panel">
+                <h2 class="text-3xl mb-6 game-title">Player Upgrades</h2>
+                <p class="mb-4 text-yellow-400">Scraps: <span id="upgrade-currency">0</span></p>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex flex-col items-center">
+                        <button id="upgrade-damage" class="button-primary w-full py-3 mb-2">
+                            Damage <span id="current-damage"></span> <span id="cost-damage"></span>
+                        </button>
+                        <button id="upgrade-hp" class="button-primary w-full py-3">
+                            Max HP <span id="current-hp"></span> <span id="cost-hp"></span>
+                        </button>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <button id="upgrade-speed" class="button-primary w-full py-3 mb-2">
+                            Speed <span id="current-speed"></span> <span id="cost-speed"></span>
+                        </button>
+                        <button id="upgrade-regen" class="button-primary w-full py-3">
+                            HP Regen <span id="current-regen"></span> <span id="cost-regen"></span>
+                        </button>
+                    </div>
+                </div>
+                <button id="upgrade-close-btn" class="button-secondary mt-6">Close</button>
+            </div>
+        </div>
+
+        <div id="pause-menu" class="overlay">
+            <div class="panel">
+                <h2 class="text-3xl mb-6 game-title">Game Paused</h2>
+                <button id="resume-button" class="button-primary mb-4">Resume Game&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</button>
+                <button id="save-game-button" class="button-secondary mb-4">Save Game&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</button>
+                <button id="main-menu-from-pause-button" class="button-secondary">Main Menu</button>
+            </div>
+        </div>
+
+        <div id="game-over-screen" class="overlay">
+            <div class="panel">
+                <h2 class="text-4xl mb-6 game-title">GAME OVER!</h2>
+                <p class="text-xl mb-4">You were overwhelmed by the horde.</p>
+                <p class="text-lg mb-6">Kills: <span id="final-kills">0</span></p>
+                <button id="restart-game-over-btn" class="button-primary">Restart Game</button>
+            </div>
+        </div>
+
+        <div id="victory-screen" class="overlay">
+            <div class="panel">
+                <h2 class="text-4xl mb-6 game-title">VICTORY!</h2>
+                <p class="text-xl mb-4">You survived the ultimate horde!</p>
+                <p class="text-lg mb-6">Total Kills: <span id="victory-kills">0</span></p>
+                <button id="restart-victory-btn" class="button-primary">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="bg-music" loop>
+        <source src="placeholder_bg_music.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+    <audio id="sfx-hit">
+        <source src="placeholder_hit.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+    <audio id="sfx-zombie-groan">
+        <source src="placeholder_zombie_groan.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <script>
+        // --- Game State Management ---
+        const gameState = {
+            player: {
+                x: 0,
+                y: 0,
+                width: 30, // Player width for collision
+                height: 30, // Player height for collision
+                hp: 100,
+                maxHp: 100,
+                xp: 0,
+                maxXp: 100,
+                level: 1,
+                damage: 10,
+                speed: 150, // pixels per second for player movement (AI)
+                hpRegen: 7.5, // hp per second - Increased slightly
+                currency: 0,
+                weapon: "Rifle",
+                kills: 0,
+                sightRadius: 200, // For Fog of War and AI detection
+                attackRange: 150, // How far the player can shoot
+                attackCooldown: 500, // milliseconds
+                lastAttackTime: 0,
+                projectileSpeed: 800, // pixels per second for projectiles
+            },
+            zombies: [],
+            projectiles: [],
+            map: {
+                width: 0, // Will be set on resize/init
+                height: 0, // Will be set on resize/init
+                tileSize: 40, // Size of grid cells for map generation and pathfinding
+                grid: [], // 2D array representing terrain (0: ground, 1: obstacle)
+                fogTiles: [], // 2D array for fog of war state (0: unvisited, 1: visible, 2: fogged)
+                weather: 'Clear',
+                weatherEffect: null, // Stores active weather effect element
+            },
+            upgradeCosts: {
+                damage: 50,
+                hp: 50,
+                speed: 50,
+                regen: 50,
+            },
+            gameSpeedMultiplier: 1,
+            lastFrameTime: 0,
+            isPaused: false,
+            activeScreen: 'main-menu', // 'main-menu', 'in-game', 'upgrade-menu', 'pause-menu', 'game-over', 'victory'
+            zone: 1, // Current game zone - NEW
+            zombieSpawnTimer: 0, // NEW: For periodic zombie spawning
+            zombieSpawnInterval: 2, // seconds - NEW: Initial spawn interval
+            input: { // Keeping input for now, but will be bypassed by AI. Could be removed entirely later.
+                left: false,
+                right: false,
+                up: false,
+                down: false,
+            },
+            audio: {
+                bgMusic: null,
+                sfxHit: null,
+                sfxZombieGroan: null,
+                volume: 0.5,
+            },
+            debugMode: false, // Set to true for no fog of war
+            playerAI: {
+                mode: 'explore', // 'explore', 'patrol' or 'attack' - Changed default to explore
+                targetX: 0,
+                targetY: 0,
+                patrolTimer: 0,
+                maxPatrolTime: 3, // seconds before picking new random direction
+                stuckTimer: 0, // NEW: For detecting if AI is stuck
+                stuckThreshold: 0.5, // seconds
+                lastPosition: {x:0, y:0}, // NEW: For detecting if AI is stuck
+            },
+            zoneZombieKillsRequired: 10, // NEW: Kills needed to advance zone
+        };
+
+        // --- DOM Elements ---
+        const gameCanvas = document.getElementById('game-canvas');
+        const ctx = gameCanvas.getContext('2d');
+        const fogOfWarCanvas = document.getElementById('fog-of-war-canvas');
+        const fogCtx = fogOfWarCanvas.getContext('2d');
+        const mapContainer = document.querySelector('.map-container');
+
+        const mainMenu = document.getElementById('main-menu');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const loadGameBtn = document.getElementById('load-game-btn');
+
+        const inGameUI = document.getElementById('in-game-ui');
+        const playerHealthSpan = document.getElementById('player-health');
+        const playerMaxHealthSpan = document.getElementById('player-max-health');
+        const hpBar = document.getElementById('hp-bar');
+        const playerXpSpan = document.getElementById('player-xp');
+        const playerMaxXpSpan = document.getElementById('player-max-xp');
+        const playerLevelSpan = document.getElementById('player-level');
+        const xpBar = document.getElementById('xp-bar');
+        const playerCurrencySpan = document.getElementById('player-currency');
+        const playerWeaponSpan = document.getElementById('player-weapon');
+        const playerKillsSpan = document.getElementById('player-kills');
+        const playerSpeedSpan = document.getElementById('player-speed');
+        const currentZoneSpan = document.getElementById('current-zone');
+        const weatherDisplay = document.getElementById('weather-display');
+        const weatherTypeSpan = document.getElementById('weather-type');
+
+        const pauseButton = document.getElementById('pause-button');
+        const speedNormalBtn = document.getElementById('speed-normal');
+        const speedFastBtn = document.getElementById('speed-fast');
+        const speedFastestBtn = document.getElementById('speed-fastest');
+        const speedX10Btn = document.getElementById('speed-x10');
+
+        const upgradeButtonOpen = document.getElementById('upgrade-button-open');
+        const upgradeMenu = document.getElementById('upgrade-menu');
+        const upgradeCurrencySpan = document.getElementById('upgrade-currency');
+        const upgradeDamageBtn = document.getElementById('upgrade-damage');
+        const currentDamageSpan = document.getElementById('current-damage');
+        const costDamageSpan = document.getElementById('cost-damage');
+        const upgradeHpBtn = document.getElementById('upgrade-hp');
+        const currentHpSpan = document.getElementById('current-hp');
+        const costHpSpan = document.getElementById('cost-hp');
+        const upgradeSpeedBtn = document.getElementById('upgrade-speed');
+        const currentSpeedSpan = document.getElementById('current-speed');
+        const costSpeedSpan = document.getElementById('cost-speed');
+        const upgradeRegenBtn = document.getElementById('upgrade-regen');
+        const currentRegenSpan = document.getElementById('current-regen');
+        const costRegenSpan = document.getElementById('cost-regen');
+        const upgradeCloseBtn = document.getElementById('upgrade-close-btn');
+
+        const pauseMenu = document.getElementById('pause-menu');
+        const resumeButton = document.getElementById('resume-button');
+        const saveGameButton = document.getElementById('save-game-button');
+        const mainMenuFromPauseButton = document.getElementById('main-menu-from-pause-button');
+
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalKillsSpan = document.getElementById('final-kills');
+        const restartGameOverBtn = document.getElementById('restart-game-over-btn');
+
+        const victoryScreen = document.getElementById('victory-screen');
+        const victoryKillsSpan = document.getElementById('victory-kills');
+        const restartVictoryBtn = document.getElementById('restart-victory-btn');
+
+        const bgMusic = document.getElementById('bg-music');
+        const sfxHit = document.getElementById('sfx-hit');
+        const sfxZombieGroan = document.getElementById('sfx-zombie-groan');
+        const weatherOverlay = document.getElementById('weather-overlay');
+
+        // Global variable for player DOM element
+        let playerDomElement = null;
+        let playerHealthFillElement = null; // Reference to the health bar fill
+
+        // --- Game Initialization ---
+        function initGame(load = false) {
+            // Reset player and game state if not loading
+            if (!load) {
+                gameState.player = {
+                    x: 0, // Will be set to center of map
+                    y: 0, // Will be set to center of map
+                    width: 30,
+                    height: 30,
+                    hp: 100,
+                    maxHp: 100,
+                    xp: 0,
+                    maxXp: 100,
+                    level: 1,
+                    damage: 10,
+                    speed: 150, // pixels per second
+                    hpRegen: 7.5, // hp per second - Increased slightly
+                    currency: 0,
+                    weapon: "Rifle",
+                    kills: 0,
+                    sightRadius: 200, // For Fog of War and AI detection
+                    attackRange: 150, // How far the player can shoot
+                    attackCooldown: 500, // milliseconds
+                    lastAttackTime: 0,
+                    projectileSpeed: 800, // pixels per second for projectiles
+                };
+                gameState.zombies = [];
+                gameState.projectiles = [];
+                gameState.upgradeCosts = { damage: 50, hp: 50, speed: 50, regen: 50 };
+                gameState.zone = 1;
+                gameState.zombieSpawnTimer = 0; // Reset spawn timer
+                gameState.zombieSpawnInterval = 2; // Initial spawn interval
+                gameState.gameSpeedMultiplier = 1;
+                gameState.isPaused = false;
+                gameState.playerAI.mode = 'explore'; // Reset to explore mode
+                gameState.playerAI.patrolTimer = 0;
+                gameState.playerAI.stuckTimer = 0; // Reset stuck timer
+                gameState.playerAI.lastPosition = {x:0, y:0}; // Reset last position
+                gameState.zoneZombieKillsRequired = 10; // Reset kills for zone
+            }
+
+            // Set canvas dimensions
+            gameCanvas.width = mapContainer.clientWidth;
+            gameCanvas.height = mapContainer.clientHeight;
+            fogOfWarCanvas.width = mapContainer.clientWidth;
+            fogOfWarCanvas.height = mapContainer.clientHeight;
+            gameState.map.width = gameCanvas.width;
+            gameState.map.height = gameCanvas.height;
+
+            // Position player in the center of the map
+            gameState.player.x = (gameState.map.width - gameState.player.width) / 2;
+            gameState.player.y = (gameState.map.height - gameState.player.height) / 2;
+            gameState.playerAI.lastPosition = {x: gameState.player.x, y: gameState.player.y}; // Initialize last position
+
+            generateMap();
+            initFogOfWar();
+            spawnInitialZombies();
+            setupPlayerDomElement(); // Call this once to create the player element
+            updatePlayerDomPosition(); // Update its position
+            updateUI();
+            setScreen('in-game');
+            if (bgMusic) {
+                bgMusic.volume = gameState.audio.volume;
+                bgMusic.play().catch(e => console.error("Error playing music:", e));
+            }
+            // Start game loop
+            gameState.lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function setupPlayerDomElement() {
+            if (!playerDomElement) {
+                playerDomElement = document.createElement('div');
+                playerDomElement.classList.add('player');
+
+                const playerBody = document.createElement('div');
+                playerBody.classList.add('player-body');
+                playerDomElement.appendChild(playerBody);
+
+                const playerHead = document.createElement('div');
+                playerHead.classList.add('player-head');
+                playerBody.appendChild(playerHead);
+
+                const healthBar = document.createElement('div');
+                healthBar.classList.add('health-bar');
+                playerHealthFillElement = document.createElement('div');
+                playerHealthFillElement.classList.add('health-bar-fill');
+                healthBar.appendChild(playerHealthFillElement);
+                playerDomElement.appendChild(healthBar);
+
+                mapContainer.appendChild(playerDomElement);
+            }
+        }
+
+        function updatePlayerDomPosition() {
+            if (playerDomElement) {
+                playerDomElement.style.left = `${gameState.player.x}px`;
+                playerDomElement.style.top = `${gameState.player.y}px`;
+                if (playerHealthFillElement) {
+                    playerHealthFillElement.style.width = `${(gameState.player.hp / gameState.player.maxHp) * 100}%`;
+                }
+            }
+        }
+
+        // --- Map Generation (Simplified) ---
+        function generateMap() {
+            const cols = Math.floor(gameState.map.width / gameState.map.tileSize);
+            const rows = Math.floor(gameState.map.height / gameState.map.tileSize);
+            gameState.map.grid = Array(rows).fill(0).map(() => Array(cols).fill(0));
+
+            // Place some random obstacles (buildings, trees) - Increased count slightly
+            const numObstacles = Math.floor(cols * rows * 0.08); // 8% obstacles
+            for (let i = 0; i < numObstacles; i++) {
+                let r, c;
+                do {
+                    r = Math.floor(Math.random() * rows);
+                    c = Math.floor(Math.random() * cols);
+                } while (gameState.map.grid[r][c] === 1); // Ensure no overlap
+                gameState.map.grid[r][c] = 1; // 1 represents an obstacle
+            }
+        }
+
+        // --- Fog of War ---
+        function initFogOfWar() {
+            const cols = Math.floor(gameState.map.width / gameState.map.tileSize);
+            const rows = Math.floor(gameState.map.height / gameState.map.tileSize);
+            gameState.map.fogTiles = Array(rows).fill(0).map(() => Array(cols).fill(0)); // 0: unvisited, 1: visible, 2: fogged
+        }
+
+        function updateFogOfWar() {
+            if (gameState.debugMode) {
+                fogCtx.clearRect(0, 0, fogOfWarCanvas.width, fogOfWarCanvas.height);
+                return; // No fog in debug mode
+            }
+
+            const tileSize = gameState.map.tileSize;
+            const playerX = gameState.player.x + gameState.player.width / 2; // Center of player
+            const playerY = gameState.player.y + gameState.player.height / 2; // Center of player
+            const sightRadius = gameState.player.sightRadius;
+
+            // Clear previous drawing
+            fogCtx.clearRect(0, 0, fogOfWarCanvas.width, fogOfWarCanvas.height);
+
+            // Draw initial black mask
+            fogCtx.fillStyle = 'rgba(0, 0, 0, 1)';
+            fogCtx.fillRect(0, 0, fogOfWarCanvas.width, fogOfWarCanvas.height);
+
+            // Create a gradient for the visible area (circle around player)
+            const gradient = fogCtx.createRadialGradient(playerX, playerY, sightRadius * 0.5, playerX, playerY, sightRadius);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 1)'); // Fully transparent in center
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 1)'); // Fully opaque at edge
+
+            fogCtx.globalCompositeOperation = 'destination-out'; // Punch a hole
+
+            fogCtx.beginPath();
+            fogCtx.arc(playerX, playerY, sightRadius, 0, Math.PI * 2);
+            fogCtx.fillStyle = gradient;
+            fogCtx.fill();
+
+            // Store visibility state for each tile
+            const cols = Math.floor(gameState.map.width / tileSize);
+            const rows = Math.floor(gameState.map.height / tileSize);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const tileCenterX = c * tileSize + tileSize / 2;
+                    const tileCenterY = r * tileSize + tileSize / 2;
+                    const dist = Math.hypot(tileCenterX - playerX, tileCenterY - playerY);
+
+                    if (dist < sightRadius) {
+                        // Tile is visible
+                        if (gameState.map.fogTiles[r][c] !== 1) {
+                            gameState.map.fogTiles[r][c] = 1; // Mark as visible
+                        }
+                    } else if (gameState.map.fogTiles[r][c] === 1) {
+                        // Tile was visible, now outside sight, becomes fogged
+                        gameState.map.fogTiles[r][c] = 2;
+                    }
+                }
+            }
+
+            // Draw fogged areas as semi-transparent grey
+            fogCtx.globalCompositeOperation = 'source-over'; // Restore normal drawing
+            fogCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // Grey overlay for visited but currently unseen areas
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (gameState.map.fogTiles[r][c] === 2) {
+                        fogCtx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+                    }
+                }
+            }
+        }
+
+        // --- Weather System ---
+        function updateWeather() {
+            // Simple weather change logic (e.g., every 60 seconds)
+            const weatherTypes = ['Clear', 'Light Rain', 'Dense Fog'];
+            const randomWeatherIndex = Math.floor(Math.random() * weatherTypes.length);
+            gameState.map.weather = weatherTypes[randomWeatherIndex];
+            weatherTypeSpan.textContent = gameState.map.weather;
+
+            // Clear previous weather effect
+            weatherOverlay.innerHTML = '';
+            if (gameState.map.weatherEffect && gameState.map.weatherEffect.elements) {
+                // Remove existing weather particles/drops
+                gameState.map.weatherEffect.elements.forEach(el => el.remove());
+                gameState.map.weatherEffect = null;
+            }
+
+            // Apply new weather effect
+            if (gameState.map.weather === 'Light Rain') {
+                weatherDisplay.classList.remove('hidden');
+                gameState.map.weatherEffect = createRainEffect(50); // 50 drops
+            } else if (gameState.map.weather === 'Dense Fog') {
+                weatherDisplay.classList.remove('hidden');
+                gameState.map.weatherEffect = createFogEffect(30); // 30 particles
+            }
+            // Clear weather effect if 'Clear'
+            else {
+                weatherDisplay.classList.add('hidden'); // Hide if clear
+            }
+        }
+
+        function createRainEffect(numDrops) {
+            const drops = [];
+            for (let i = 0; i < numDrops; i++) {
+                const drop = document.createElement('div');
+                drop.classList.add('rain-drop');
+                drop.style.left = `${Math.random() * 100}%`;
+                drop.style.top = `${Math.random() * 100}%`;
+                drop.style.animationDuration = `${1 + Math.random() * 0.5}s`;
+                drop.style.animationDelay = `${Math.random() * 2}s`;
+                weatherOverlay.appendChild(drop);
+                drops.push(drop);
+            }
+            return { elements: drops };
+        }
+
+        function createFogEffect(numParticles) {
+            const particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('fog-particle');
+                const size = 50 + Math.random() * 100;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.left = `${Math.random() * 100}%`;
+                particle.style.top = `${Math.random() * 100}%`;
+                particle.style.animationDuration = `${10 + Math.random() * 10}s`;
+                particle.style.animationDelay = `${Math.random() * 5}s`;
+                particle.style.setProperty('--fog-drift-x', `${(Math.random() - 0.5) * 200}px`);
+                particle.style.setProperty('--fog-drift-y', `${(Math.random() - 0.5) * 200}px`);
+                weatherOverlay.appendChild(particle);
+                particles.push(particle);
+            }
+            return { elements: particles };
+        }
+
+
+        // --- Game Loop ---
+        function gameLoop(currentTime) {
+            if (gameState.isPaused) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            const deltaTime = (currentTime - gameState.lastFrameTime) / 1000 * gameState.gameSpeedMultiplier; // in seconds
+            gameState.lastFrameTime = currentTime;
+
+            update(deltaTime);
+            render();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Update Game State ---
+        function update(deltaTime) {
+            // Player AI Movement
+            updatePlayerAI(deltaTime);
+
+            // HP Regen
+            gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + gameState.player.hpRegen * deltaTime);
+
+            // Zombie AI & Spawning
+            spawnZombiesPeriodically(deltaTime);
+            updateZombies(deltaTime);
+
+            // Player attacking (shooting)
+            handlePlayerAttack();
+            updateProjectiles(deltaTime);
+
+            // Check for game over (player dies)
+            if (gameState.player.hp <= 0) {
+                endGame(false); // Player died
+                return;
+            }
+
+            // Check for zone progression
+            if (gameState.player.kills >= gameState.zoneZombieKillsRequired * gameState.zone) {
+                advanceZone();
+            }
+
+            updateFogOfWar();
+            updateUI();
+            updatePlayerDomPosition(); // Update the player's DOM element position
+        }
+
+        // --- Player AI ---
+        function updatePlayerAI(deltaTime) {
+            const player = gameState.player;
+            const playerCenterX = player.x + player.width / 2;
+            const playerCenterY = player.y + player.height / 2;
+            let targetX = playerCenterX;
+            let targetY = playerCenterY;
+            let dx = 0, dy = 0;
+
+            // --- AI Learning/Survival Mechanism (Stuck Detection) ---
+            const distMoved = Math.hypot(player.x - gameState.playerAI.lastPosition.x, player.y - gameState.playerAI.lastPosition.y);
+            if (distMoved < 1) { // If player hasn't moved much
+                gameState.playerAI.stuckTimer += deltaTime;
+            } else {
+                gameState.playerAI.stuckTimer = 0; // Reset timer if moving
+                gameState.playerAI.lastPosition = {x: player.x, y: player.y};
+            }
+
+            if (gameState.playerAI.stuckTimer >= gameState.playerAI.stuckThreshold) {
+                // If stuck, force a new random patrol target to try and get unstuck
+                console.log("Player AI appears stuck, re-patrolling.");
+                gameState.playerAI.mode = 'patrol';
+                gameState.playerAI.patrolTimer = gameState.playerAI.maxPatrolTime; // Force new target
+                gameState.playerAI.stuckTimer = 0; // Reset stuck timer
+            }
+
+            // --- AI Prioritization ---
+
+            // 1. Attack Mode: Find closest zombie within sight radius
+            let targetZombie = null;
+            let closestDist = Infinity;
+
+            gameState.zombies.forEach(zombie => {
+                const dist = Math.hypot(zombie.x - playerCenterX, zombie.y - playerCenterY);
+                if (dist < closestDist && dist <= player.sightRadius + zombie.radius) {
+                    closestDist = dist;
+                    targetZombie = zombie;
+                }
+            });
+
+            if (targetZombie) {
+                gameState.playerAI.mode = 'attack';
+                // Move towards zombie if outside a comfortable attack range, otherwise strafe/hold position
+                const comfortableAttackDistance = player.attackRange * 0.7; // Stay a bit closer than max range
+                if (closestDist > comfortableAttackDistance) {
+                    const angle = Math.atan2(targetZombie.y - playerCenterY, targetZombie.x - playerCenterX);
+                    dx = Math.cos(angle) * player.speed;
+                    dy = Math.sin(angle) * player.speed;
+                } else if (closestDist < comfortableAttackDistance * 0.8 && player.hp < player.maxHp * 0.5) {
+                    // If too close and low HP, try to back off (kite)
+                    const angle = Math.atan2(playerCenterY - targetZombie.y, playerCenterX - targetZombie.x); // Flee angle
+                    dx = Math.cos(angle) * player.speed;
+                    dy = Math.sin(angle) * player.speed;
+                } else {
+                    // Stay put or strafe slightly if in optimal range
+                    dx = 0;
+                    dy = 0;
+                }
+            } else {
+                // 2. Explore Mode: Find nearest unexplored tile
+                let nearestUnexploredTile = null;
+                let minExploreDist = Infinity;
+                const tileSize = gameState.map.tileSize;
+                const cols = gameState.map.grid[0].length;
+                const rows = gameState.map.grid.length;
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (gameState.map.fogTiles[r][c] === 0) { // Unvisited tile
+                            const tileCenterX = c * tileSize + tileSize / 2;
+                            const tileCenterY = r * tileSize + tileSize / 2;
+                            const dist = Math.hypot(tileCenterX - playerCenterX, tileCenterY - playerCenterY);
+                            if (dist < minExploreDist) {
+                                minExploreDist = dist;
+                                nearestUnexploredTile = { x: tileCenterX, y: tileCenterY };
+                            }
+                        }
+                    }
+                }
+
+                if (nearestUnexploredTile && minExploreDist > player.width) { // If unexplored tile found and not already on it
+                    gameState.playerAI.mode = 'explore';
+                    targetX = nearestUnexploredTile.x;
+                    targetY = nearestUnexploredTile.y;
+                    const angle = Math.atan2(targetY - playerCenterY, targetX - playerCenterX);
+                    dx = Math.cos(angle) * player.speed;
+                    dy = Math.sin(angle) * player.speed;
+                } else {
+                    // 3. Patrol Mode: If no zombies and no unexplored tiles, or reached current patrol target
+                    gameState.playerAI.mode = 'patrol';
+                    gameState.playerAI.patrolTimer += deltaTime;
+                    if (gameState.playerAI.patrolTimer >= gameState.playerAI.maxPatrolTime ||
+                        (Math.abs(player.x - gameState.playerAI.targetX) < player.width / 2 && Math.abs(player.y - gameState.playerAI.targetY) < player.height / 2)) {
+                        // Pick a new random target point within the map, avoiding obstacles if possible
+                        let newTargetX, newTargetY;
+                        let foundValidTarget = false;
+                        let attempts = 0;
+                        const maxAttempts = 10;
+                        do {
+                            newTargetX = Math.random() * (gameState.map.width - player.width);
+                            newTargetY = Math.random() * (gameState.map.height - player.height);
+                            // Check if the target itself is an obstacle
+                            if (!checkObstacleCollision(newTargetX, newTargetY, player.width, player.height)) {
+                                foundValidTarget = true;
+                            }
+                            attempts++;
+                        } while (!foundValidTarget && attempts < maxAttempts);
+
+                        if(foundValidTarget) {
+                            gameState.playerAI.targetX = newTargetX;
+                            gameState.playerAI.targetY = newTargetY;
+                        } else {
+                            // If no valid target found, just try to move slightly
+                            gameState.playerAI.targetX = player.x + (Math.random() - 0.5) * 100;
+                            gameState.playerAI.targetY = player.y + (Math.random() - 0.5) * 100;
+                        }
+                        gameState.playerAI.patrolTimer = 0;
+                    }
+
+                    // Move towards patrol target
+                    const angle = Math.atan2(gameState.playerAI.targetY - playerCenterY, gameState.playerAI.targetX - playerCenterX);
+                    dx = Math.cos(angle) * player.speed;
+                    dy = Math.sin(angle) * player.speed;
+                }
+            }
+
+            let newPlayerX = player.x + dx * deltaTime;
+            let newPlayerY = player.y + dy * deltaTime;
+
+            // Collision detection with map boundaries
+            newPlayerX = Math.max(0, Math.min(newPlayerX, gameState.map.width - player.width));
+            newPlayerY = Math.max(0, Math.min(newPlayerY, gameState.map.height - player.height));
+
+            // Collision with map obstacles (simplified sliding behavior)
+            const originalPlayerX = player.x;
+            const originalPlayerY = player.y;
+
+            // Try moving horizontally
+            if (!checkObstacleCollision(newPlayerX, originalPlayerY, player.width, player.height)) {
+                player.x = newPlayerX;
+            } else {
+                newPlayerX = originalPlayerX; // If blocked, reset x
+            }
+
+            // Try moving vertically
+            if (!checkObstacleCollision(originalPlayerX, newPlayerY, player.width, player.height)) {
+                player.y = newPlayerY;
+            } else {
+                newPlayerY = originalPlayerY; // If blocked, reset y
+            }
+
+            // If player was completely blocked, try to get unstuck by forcing a new target
+            if (player.x === originalPlayerX && player.y === originalPlayerY && (dx !== 0 || dy !== 0)) {
+                gameState.playerAI.stuckTimer += deltaTime; // Increase stuck timer
+            } else {
+                gameState.playerAI.stuckTimer = 0; // Reset if moved
+            }
+        }
+
+
+        // --- Render Game Elements ---
+        function render() {
+            ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Render map obstacles (if any) - now with varied visuals
+            const tileSize = gameState.map.tileSize;
+            for (let r = 0; r < gameState.map.grid.length; r++) {
+                for (let c = 0; c < gameState.map.grid[0].length; c++) {
+                    if (gameState.map.grid[r][c] === 1) { // If it's an obstacle
+                        // Determine color based on cell coordinates for consistent visuals
+                        // Using a simple hash to alternate between 'building' and 'tree' colors
+                        const hash = (r * 100 + c) % 2;
+                        if (hash === 0) {
+                            ctx.fillStyle = '#444'; // Building (dark grey)
+                        } else {
+                            ctx.fillStyle = '#228B22'; // Tree (forest green)
+                        }
+                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+                    }
+                }
+            }
+
+            // Render Zombies
+            gameState.zombies.forEach(drawZombie);
+
+            // Render Projectiles
+            gameState.projectiles.forEach(drawProjectile);
+        }
+
+        // Player is now handled by DOM element, so no `drawPlayer` function on canvas.
+
+        function drawZombie(zombie) {
+            ctx.fillStyle = '#880808'; // Zombie color
+            ctx.beginPath();
+            ctx.arc(zombie.x, zombie.y, zombie.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Health bar for zombie
+            const healthBarWidth = zombie.radius * 2;
+            const healthBarHeight = 3;
+            const healthBarX = zombie.x - zombie.radius;
+            const healthBarY = zombie.y - zombie.radius - 8;
+
+            ctx.fillStyle = '#333'; // Background of health bar
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+            ctx.fillStyle = '#ff0000'; // Fill of health bar
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth * (zombie.hp / zombie.maxHp), healthBarHeight);
+        }
+
+        function drawProjectile(projectile) {
+            ctx.fillStyle = '#00ffff'; // Projectile color
+            ctx.beginPath();
+            ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // --- UI Updates ---
+        function updateUI() {
+            const player = gameState.player;
+            playerHealthSpan.textContent = Math.floor(player.hp);
+            playerMaxHealthSpan.textContent = player.maxHp;
+            hpBar.style.width = `${(player.hp / player.maxHp) * 100}%`;
+
+            playerXpSpan.textContent = Math.floor(player.xp);
+            playerMaxXpSpan.textContent = player.maxXp;
+            playerLevelSpan.textContent = player.level;
+            xpBar.style.width = `${(player.xp / player.maxXp) * 100}%`;
+
+            playerCurrencySpan.textContent = player.currency;
+            playerWeaponSpan.textContent = player.weapon;
+            playerKillsSpan.textContent = player.kills;
+            playerSpeedSpan.textContent = player.speed.toFixed(1);
+            currentZoneSpan.textContent = `Zone ${gameState.zone}`;
+
+            // Upgrade menu updates
+            upgradeCurrencySpan.textContent = player.currency;
+
+            currentDamageSpan.textContent = `(${player.damage})`;
+            costDamageSpan.textContent = `Cost: ${gameState.upgradeCosts.damage}`;
+            updateUpgradeButtonState(upgradeDamageBtn, gameState.upgradeCosts.damage);
+
+            currentHpSpan.textContent = `(${player.maxHp})`;
+            costHpSpan.textContent = `Cost: ${gameState.upgradeCosts.hp}`;
+            updateUpgradeButtonState(upgradeHpBtn, gameState.upgradeCosts.hp);
+
+            currentSpeedSpan.textContent = `(${player.speed})`;
+            costSpeedSpan.textContent = `Cost: ${gameState.upgradeCosts.speed}`;
+            updateUpgradeButtonState(upgradeSpeedBtn, gameState.upgradeCosts.speed);
+
+            currentRegenSpan.textContent = `(${player.hpRegen.toFixed(1)})`;
+            costRegenSpan.textContent = `Cost: ${gameState.upgradeCosts.regen}`;
+            updateUpgradeButtonState(upgradeRegenBtn, gameState.upgradeCosts.regen);
+        }
+
+        function updateUpgradeButtonState(button, cost) {
+            if (gameState.player.currency >= cost) {
+                button.classList.remove('opacity-50', 'cursor-not-allowed');
+                button.disabled = false;
+            } else {
+                button.classList.add('opacity-50', 'cursor-not-allowed');
+                button.disabled = true;
+            }
+        }
+
+        function setScreen(screenName) {
+            // Hide all screens
+            mainMenu.classList.remove('active');
+            inGameUI.classList.add('hidden');
+            upgradeMenu.classList.remove('active');
+            pauseMenu.classList.remove('active');
+            gameOverScreen.classList.remove('active');
+            victoryScreen.classList.remove('active');
+
+            // Show desired screen
+            if (screenName === 'main-menu') {
+                mainMenu.classList.add('active');
+                gameState.isPaused = true;
+            } else if (screenName === 'in-game') {
+                inGameUI.classList.remove('hidden');
+                gameState.isPaused = false;
+            } else if (screenName === 'upgrade-menu') {
+                upgradeMenu.classList.add('active');
+                gameState.isPaused = true;
+            } else if (screenName === 'pause-menu') {
+                pauseMenu.classList.add('active');
+                gameState.isPaused = true;
+            } else if (screenName === 'game-over') {
+                gameOverScreen.classList.add('active');
+                finalKillsSpan.textContent = gameState.player.kills;
+                gameState.isPaused = true;
+                if (bgMusic) bgMusic.pause();
+            } else if (screenName === 'victory') {
+                victoryScreen.classList.add('active');
+                victoryKillsSpan.textContent = gameState.player.kills;
+                gameState.isPaused = true;
+                if (bgMusic) bgMusic.pause();
+            }
+            gameState.activeScreen = screenName;
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', () => {
+            gameCanvas.width = mapContainer.clientWidth;
+            gameCanvas.height = mapContainer.clientHeight;
+            fogOfWarCanvas.width = mapContainer.clientWidth;
+            fogOfWarCanvas.height = mapContainer.clientHeight;
+            gameState.map.width = gameCanvas.width;
+            gameState.map.height = gameCanvas.height;
+            generateMap(); // Regenerate map on resize to adjust obstacles
+            initFogOfWar(); // Re-initialize fog of war
+            updateFogOfWar(); // Re-render fog on resize
+            // Reposition player in center after resize
+            gameState.player.x = (gameState.map.width - gameState.player.width) / 2;
+            gameState.player.y = (gameState.map.height - gameState.player.height) / 2;
+            updatePlayerDomPosition();
+        });
+
+
+        startGameBtn.addEventListener('click', () => initGame(false));
+        loadGameBtn.addEventListener('click', loadGame);
+
+        pauseButton.addEventListener('click', togglePause);
+        resumeButton.addEventListener('click', togglePause);
+        saveGameButton.addEventListener('click', saveGame);
+        mainMenuFromPauseButton.addEventListener('click', () => {
+            setScreen('main-menu');
+            if (bgMusic) bgMusic.pause();
+        });
+
+        speedNormalBtn.addEventListener('click', () => gameState.gameSpeedMultiplier = 1);
+        speedFastBtn.addEventListener('click', () => gameState.gameSpeedMultiplier = 2);
+        speedFastestBtn.addEventListener('click', () => gameState.gameSpeedMultiplier = 4);
+        speedX10Btn.addEventListener('click', () => gameState.gameSpeedMultiplier = 10);
+
+        upgradeButtonOpen.addEventListener('click', () => setScreen('upgrade-menu'));
+        upgradeCloseBtn.addEventListener('click', () => setScreen('in-game'));
+
+        upgradeDamageBtn.addEventListener('click', () => upgradePlayer('damage'));
+        upgradeHpBtn.addEventListener('click', () => upgradePlayer('hp'));
+        upgradeSpeedBtn.addEventListener('click', () => upgradePlayer('speed'));
+        upgradeRegenBtn.addEventListener('click', () => upgradePlayer('regen'));
+
+        restartGameOverBtn.addEventListener('click', () => initGame(false));
+        restartVictoryBtn.addEventListener('click', () => initGame(false));
+
+
+        // --- Game Logic Functions ---
+        function togglePause() {
+            gameState.isPaused = !gameState.isPaused;
+            if (gameState.isPaused) {
+                setScreen('pause-menu');
+                if (bgMusic) bgMusic.pause();
+            } else {
+                setScreen('in-game');
+                if (bgMusic) bgMusic.play().catch(e => console.error("Error playing music:", e));
+            }
+        }
+
+        function spawnInitialZombies() {
+            // Clear existing zombies before spawning
+            gameState.zombies = [];
+            // Spawn a few zombies away from the player
+            for (let i = 0; i < 5; i++) {
+                spawnZombie();
+            }
+        }
+
+        function spawnZombie() {
+            const player = gameState.player;
+            let zombieX, zombieY;
+            const minSpawnDistance = Math.max(gameState.map.width, gameState.map.height) / 3; // Ensure zombies spawn far enough
+
+            // Apply zone scaling to zombie stats
+            const zoneFactor = 1 + (gameState.zone - 1) * 0.1; // 10% increase per zone
+            const baseHp = 50;
+            const baseDamage = 5;
+            const baseSpeed = 1.5; // Slightly faster base speed
+
+            // Find a spawn position far from player and not inside an obstacle
+            let attempts = 0;
+            const maxAttempts = 100;
+            do {
+                zombieX = Math.random() * (gameState.map.width - 2 * 15) + 15; // Ensure within bounds
+                zombieY = Math.random() * (gameState.map.height - 2 * 15) + 15; // Ensure within bounds
+                attempts++;
+            } while ((Math.hypot(zombieX - player.x, zombieY - player.y) < minSpawnDistance ||
+                     checkObstacleCollision(zombieX - 15, zombieY - 15, 30, 30)) && attempts < maxAttempts);
+            
+            if (attempts >= maxAttempts) {
+                console.warn("Could not find a suitable spawn point for zombie after many attempts.");
+                return; // Prevent infinite loop for impossible spawns
+            }
+
+
+            gameState.zombies.push({
+                id: Date.now() + Math.random(), // Unique ID
+                x: zombieX,
+                y: zombieY,
+                radius: 15,
+                hp: baseHp * zoneFactor, // Scaled HP
+                maxHp: baseHp * zoneFactor,
+                damage: baseDamage * zoneFactor, // Scaled Damage
+                speed: (baseSpeed + Math.random() * 0.5) * zoneFactor, // Scaled Speed
+                target: 'player',
+                aggroRange: 150 + (gameState.zone - 1) * 10, // Aggro range slightly increases per zone
+            });
+        }
+
+        // Helper for checking collision with obstacles (for zombies and player)
+        function checkObstacleCollision(x, y, width, height) {
+            const tileSize = gameState.map.tileSize;
+            const startCol = Math.floor(x / tileSize);
+            const endCol = Math.ceil((x + width) / tileSize) - 1;
+            const startRow = Math.floor(y / tileSize);
+            const endRow = Math.ceil((y + height) / tileSize) - 1;
+
+            for (let r = Math.max(0, startRow); r <= Math.min(gameState.map.grid.length - 1, endRow); r++) {
+                for (let c = Math.max(0, startCol); c <= Math.min(gameState.map.grid[0].length - 1, endCol); c++) {
+                    if (gameState.map.grid[r][c] === 1) { // If it's an obstacle
+                        const obstacleX = c * tileSize;
+                        const obstacleY = r * tileSize;
+                        const obstacleWidth = tileSize;
+                        const obstacleHeight = tileSize;
+
+                        // AABB collision check
+                        if (x < obstacleX + obstacleWidth &&
+                            x + width > obstacleX &&
+                            y < obstacleY + obstacleHeight &&
+                            y + height > obstacleY) {
+                            return true; // Collision detected
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+
+        function spawnZombiesPeriodically(deltaTime) {
+            gameState.zombieSpawnTimer += deltaTime;
+            if (gameState.zombieSpawnTimer >= gameState.zombieSpawnInterval) {
+                spawnZombie();
+                gameState.zombieSpawnTimer = 0;
+                // Slightly decrease spawn interval as zone increases to increase density
+                // Don't let it go below a certain threshold
+                if (gameState.zombieSpawnInterval > 0.5) { // Minimum spawn interval
+                     gameState.zombieSpawnInterval -= 0.05 * (gameState.zone - 1 > 0 ? gameState.zone - 1 : 1);
+                }
+            }
+        }
+
+        function updateZombies(deltaTime) {
+            // Remove dead zombies first to avoid processing them
+            gameState.zombies = gameState.zombies.filter(zombie => zombie.hp > 0);
+
+            gameState.zombies.forEach(zombie => {
+                const player = gameState.player;
+                const playerCenterX = player.x + player.width / 2;
+                const playerCenterY = player.y + player.height / 2;
+                const distToPlayer = Math.hypot(playerCenterX - zombie.x, playerCenterY - zombie.y);
+                const zombieRadius = zombie.radius;
+                const playerRadius = player.width / 2; // Approximate player radius
+
+                // Zombie AI: Chase player if within aggro range and visible through fog (or debug mode)
+                const zombieTileRow = Math.floor(zombie.y / gameState.map.tileSize);
+                const zombieTileCol = Math.floor(zombie.x / gameState.map.tileSize);
+                const isZombieVisible = gameState.debugMode || (
+                    gameState.map.fogTiles[zombieTileRow] && 
+                    gameState.map.fogTiles[zombieTileRow][zombieTileCol] === 1
+                );
+
+                if (distToPlayer < zombie.aggroRange && isZombieVisible) {
+                    // Chase player
+                    const angle = Math.atan2(playerCenterY - zombie.y, playerCenterX - zombie.x);
+                    let moveX = Math.cos(angle) * zombie.speed * deltaTime;
+                    let moveY = Math.sin(angle) * zombie.speed * deltaTime;
+
+                    let newZombieX = zombie.x + moveX;
+                    let newZombieY = zombie.y + moveY;
+
+                    // Simple collision with map boundaries
+                    newZombieX = Math.max(zombie.radius, Math.min(newZombieX, gameState.map.width - zombie.radius));
+                    newZombieY = Math.max(zombie.radius, Math.min(newZombieY, gameState.map.height - zombie.radius));
+
+                    // Collision with obstacles
+                    const zombieRect = { x: newZombieX - zombie.radius, y: newZombieY - zombie.radius, width: zombie.radius * 2, height: zombie.radius * 2 };
+
+                    // Try moving horizontally
+                    if (!checkObstacleCollision(zombieRect.x, zombie.y - zombie.radius, zombieRect.width, zombieRect.height)) {
+                        zombie.x = newZombieX;
+                    }
+                    // Try moving vertically
+                    if (!checkObstacleCollision(zombie.x - zombie.radius, zombieRect.y, zombieRect.width, zombieRect.height)) {
+                        zombie.y = newZombieY;
+                    }
+
+                    // Player-zombie collision (melee attack if close enough)
+                    const combinedRadii = playerRadius + zombieRadius;
+                    if (distToPlayer < combinedRadii) {
+                        gameState.player.hp -= zombie.damage * deltaTime; // Continuous damage
+                        if (sfxZombieGroan && sfxZombieGroan.paused) { // Play only if not already playing
+                            sfxZombieGroan.play().catch(e => console.error("Error playing sound:", e));
+                        }
+                    }
+                }
+            });
+        }
+
+        function handlePlayerAttack() {
+            const now = performance.now();
+            // Adjusted cooldown check for game speed
+            if (now - gameState.player.lastAttackTime < gameState.player.attackCooldown / gameState.gameSpeedMultiplier) {
+                return; // Still on cooldown
+            }
+
+            // Find closest zombie within attack range
+            let targetZombie = null;
+            let closestDist = Infinity;
+
+            gameState.zombies.forEach(zombie => {
+                const playerCenterX = gameState.player.x + gameState.player.width / 2;
+                const playerCenterY = gameState.player.y + gameState.player.height / 2;
+                const dist = Math.hypot(zombie.x - playerCenterX, zombie.y - playerCenterY);
+                if (dist < closestDist && dist <= gameState.player.attackRange + zombie.radius) { // Include zombie radius in attack range
+                    closestDist = dist;
+                    targetZombie = zombie;
+                }
+            });
+
+            if (targetZombie) {
+                // Shoot projectile towards target
+                const playerCenterX = gameState.player.x + gameState.player.width / 2;
+                const playerCenterY = gameState.player.y + gameState.player.height / 2;
+
+                gameState.projectiles.push({
+                    id: Date.now() + Math.random(),
+                    x: playerCenterX,
+                    y: playerCenterY,
+                    radius: 4,
+                    speed: gameState.player.projectileSpeed,
+                    damage: gameState.player.damage,
+                    targetId: targetZombie.id, // Reference to the target zombie
+                    angle: Math.atan2(targetZombie.y - playerCenterY, targetZombie.x - playerCenterX)
+                });
+                gameState.player.lastAttackTime = now;
+            }
+        }
+
+        function updateProjectiles(deltaTime) {
+            gameState.projectiles = gameState.projectiles.filter(projectile => {
+                let hit = false;
+                const targetZombie = gameState.zombies.find(z => z.id === projectile.targetId);
+
+                if (targetZombie) {
+                    const moveX = Math.cos(projectile.angle) * projectile.speed * deltaTime;
+                    const moveY = Math.sin(projectile.angle) * projectile.speed * deltaTime;
+
+                    projectile.x += moveX;
+                    projectile.y += moveY;
+
+                    // Check collision with target zombie
+                    const distToTarget = Math.hypot(targetZombie.x - projectile.x, targetZombie.y - projectile.y);
+                    const combinedRadii = targetZombie.radius + projectile.radius;
+
+                    if (distToTarget < combinedRadii) {
+                        targetZombie.hp -= projectile.damage;
+                        if (sfxHit) sfxHit.play().catch(e => console.error("Error playing sound:", e));
+                        hit = true; // Mark projectile for removal
+
+                        if (targetZombie.hp <= 0) {
+                            gameState.player.kills++;
+                            gainXP(20 + 5 * (gameState.zone - 1)); // Gain more XP in higher zones
+                            gainCurrency(10 + 2 * (gameState.zone - 1)); // Gain more currency in higher zones
+                        }
+                    }
+                } else {
+                    // If target zombie is dead or gone, move towards original trajectory for a bit, then remove
+                    const moveX = Math.cos(projectile.angle) * projectile.speed * deltaTime;
+                    const moveY = Math.sin(projectile.angle) * projectile.speed * deltaTime;
+                    projectile.x += moveX;
+                    projectile.y += moveY;
+                }
+
+                // Remove if off-screen or hit
+                return !hit &&
+                       projectile.x > -10 && projectile.x < gameState.map.width + 10 &&
+                       projectile.y > -10 && projectile.y < gameState.map.height + 10;
+            });
+        }
+
+        function gainXP(amount) {
+            gameState.player.xp += amount;
+            if (gameState.player.xp >= gameState.player.maxXp) {
+                levelUp();
+            }
+        }
+
+        function levelUp() {
+            gameState.player.level++;
+            gameState.player.xp = gameState.player.xp - gameState.player.maxXp; // Carry over excess XP
+            gameState.player.maxXp = Math.floor(gameState.player.maxXp * 1.5); // XP required increases
+            gameState.player.maxHp += 15; // Increased HP boost
+            gameState.player.hp = gameState.player.maxHp; // Heal to full
+            gameState.player.damage += 3; // Increased damage boost
+            gameState.player.sightRadius += 10; // NEW: Increase sight radius with level
+            gameState.player.speed += 10; // NEW: Increase speed with level
+            // Give some currency for leveling up
+            gameState.player.currency += 75; // Increased currency for leveling up
+            updateUI();
+            console.log(`Player leveled up to ${gameState.player.level}!`);
+        }
+
+        function gainCurrency(amount) {
+            gameState.player.currency += amount;
+            updateUI();
+        }
+
+        function upgradePlayer(stat) {
+            const player = gameState.player;
+            const cost = gameState.upgradeCosts[stat];
+
+            if (player.currency >= cost) {
+                player.currency -= cost;
+                switch (stat) {
+                    case 'damage':
+                        player.damage += 8; // Increased upgrade amount for damage
+                        gameState.upgradeCosts.damage = Math.floor(cost * 1.25); // Increased cost scaling
+                        break;
+                    case 'hp':
+                        player.maxHp += 30; // Increased upgrade amount for HP
+                        player.hp = player.maxHp; // Heal to new max
+                        gameState.upgradeCosts.hp = Math.floor(cost * 1.25);
+                        break;
+                    case 'speed':
+                        player.speed += 25; // Increased upgrade amount for speed
+                        gameState.upgradeCosts.speed = Math.floor(cost * 1.25);
+                        break;
+                    case 'regen':
+                        player.hpRegen += 1.5; // Increased upgrade amount for regen
+                        gameState.upgradeCosts.regen = Math.floor(cost * 1.25);
+                        break;
+                }
+                updateUI();
+            } else {
+                console.log("Not enough currency for upgrade!");
+            }
+        }
+
+        // NEW: Zone progression
+        function advanceZone() {
+            gameState.zone++;
+            gameState.zombies = []; // Clear existing zombies for new zone
+            spawnInitialZombies(); // Spawn new zombies for the new zone
+            // Reset player kills for current zone goal
+            gameState.player.kills = 0; // Reset kills for the *current* zone progress
+            // Increase the kills required for the next zone
+            gameState.zoneZombieKillsRequired = Math.floor(gameState.zoneZombieKillsRequired * 1.5);
+            console.log(`Advanced to Zone ${gameState.zone}! Next zone requires ${gameState.zoneZombieKillsRequired * gameState.zone} kills.`);
+            updateUI();
+        }
+
+
+        function endGame(isVictory) {
+            if (isVictory) {
+                setScreen('victory');
+            } else {
+                setScreen('game-over');
+            }
+            saveGame(); // Auto-save on game end
+        }
+
+        // --- Save/Load Game ---
+        function saveGame() {
+            try {
+                // Prepare state for saving: remove DOM elements from objects if they exist
+                const stateToSave = JSON.parse(JSON.stringify(gameState)); // Deep copy
+
+                localStorage.setItem('zombieSurvivalGame', JSON.stringify(stateToSave));
+                console.log('Game saved!');
+            } catch (e) {
+                console.error('Error saving game:', e);
+                alert('Could not save game. Your browser might be in private mode or storage is full.');
+            }
+        }
+
+        function loadGame() {
+            try {
+                const savedState = localStorage.getItem('zombieSurvivalGame');
+                if (savedState) {
+                    Object.assign(gameState, JSON.parse(savedState));
+                    // Ensure player's x,y are within current map bounds after loading
+                    gameState.player.x = Math.max(0, Math.min(gameState.player.x, gameState.map.width - gameState.player.width));
+                    gameState.player.y = Math.max(0, Math.min(gameState.player.y, gameState.map.height - gameState.player.height));
+
+                    // Re-initialize canvas and UI elements based on loaded state
+                    initGame(true); // Pass true to indicate loading
+                    console.log('Game loaded!');
+                } else {
+                    alert('No saved game found!');
+                    console.log('No saved game found.');
+                }
+            } catch (e) {
+                console.error('Error loading game:', e);
+                alert('Could not load game. The saved data might be corrupted.');
+            }
+        }
+
+        // Initial setup on page load
+        window.addEventListener('load', () => {
+            // Preload audio (optional, but good practice)
+            gameState.audio.bgMusic = bgMusic;
+            gameState.audio.sfxHit = sfxHit;
+            gameState.audio.sfxZombieGroan = sfxZombieGroan;
+
+            // Set initial canvas size
+            gameCanvas.width = mapContainer.clientWidth;
+            gameCanvas.height = mapContainer.clientHeight;
+            fogOfWarCanvas.width = mapContainer.clientWidth;
+            fogOfWarCanvas.height = mapContainer.height; // Corrected to mapContainer.height
+            gameState.map.width = gameCanvas.width;
+            gameState.map.height = gameCanvas.height;
+
+            // Initial fog of war setup
+            initFogOfWar();
+            updateFogOfWar(); // Draw initial fog
+
+            // Set initial weather
+            updateWeather(); // Set initial weather state
+            setInterval(updateWeather, 60000); // Change weather every 60 seconds
+
+            // Check if there's a saved game to enable "Load Game" button
+            const savedState = localStorage.getItem('zombieSurvivalGame');
+            if (!savedState) {
+                loadGameBtn.disabled = true;
+                loadGameBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            setScreen('main-menu');
+        });
+
+    </script>
+</body>
+</html>
